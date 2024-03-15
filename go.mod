@@ -1,3 +1,3 @@
 module github.com/rybalka1/devmetrics
 
-go 1.22.1
+go 1.21.8
