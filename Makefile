@@ -13,7 +13,7 @@ agent:
 
 # Tests
 
-tests: check1 check2 check3 check4 check5
+tests: check1 check2 check3 check4 check5 check6
 
 check1:
 	bash ./tests/check1.sh
@@ -29,6 +29,9 @@ check4:
 
 check5:
 	bash ./tests/check5.sh
+
+check6:
+	bash ./tests/check6.sh
 
 clean-endup:
 	rm -rf cmd/server/server cmd/agent/agent

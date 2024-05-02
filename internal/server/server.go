@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/rybalka1/devmetrics/internal/handlers"
+	"github.com/rybalka1/devmetrics/internal/logger"
 	"github.com/rybalka1/devmetrics/internal/memstorage"
 )
 
@@ -15,12 +16,31 @@ type MetricServer struct {
 	http.Server
 }
 
+type Server interface {
+	InitLogger(level string) error
+	Start() error
+}
+
+func NewServer(addr string, loggerLevel string) (Server, error) {
+	store := memstorage.NewMemStorage()
+	mux := handlers.NewRouter(store)
+	return NewMetricServerWithParams(addr, store, mux, loggerLevel)
+}
+
+func (srv *MetricServer) InitLogger(level string) error {
+	return logger.Initialize(level)
+}
+
 func NewMetricServer(addr string) (*MetricServer, error) {
 	store := memstorage.NewMemStorage()
 	mux := handlers.NewRouter(store)
-	return NewMetricServerWithParams(addr, store, mux)
+	return NewMetricServerWithParams(addr, store, mux, "info")
 }
-func NewMetricServerWithParams(addr string, store memstorage.Storage, mux http.Handler) (*MetricServer, error) {
+
+func NewMetricServerWithParams(addr string,
+	store memstorage.Storage,
+	mux http.Handler, loggerLevel string) (*MetricServer, error) {
+
 	netAddr, err := net.ResolveTCPAddr("tcp", addr)
 	if err != nil {
 		return nil, err
@@ -31,6 +51,7 @@ func NewMetricServerWithParams(addr string, store memstorage.Storage, mux http.H
 	if mux == nil {
 		mux = handlers.NewRouter(store)
 	}
+
 	srv := MetricServer{
 		addr:  netAddr,
 		Store: store,
@@ -38,6 +59,11 @@ func NewMetricServerWithParams(addr string, store memstorage.Storage, mux http.H
 			Addr:    netAddr.String(),
 			Handler: mux,
 		},
+	}
+
+	err = srv.InitLogger(loggerLevel)
+	if err != nil {
+		return nil, err
 	}
 	return &srv, nil
 }
