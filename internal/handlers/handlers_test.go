@@ -105,7 +105,7 @@ func TestUpdateRoutes(t *testing.T) {
 				mType := params[0]
 				mName := params[1]
 				expectValue := params[2]
-				actualValue := store.GetMetric(mType, mName)
+				actualValue := store.GetMetricString(mType, mName)
 				fmt.Println(filterURL)
 				assert.Equal(t, expectValue, actualValue)
 
@@ -137,6 +137,12 @@ func testSendRequest(server *httptest.Server, method, url string,
 	return resp.StatusCode, body, nil
 
 }
+
+// type HTTPparams struct {
+// 	method string
+// 	url    string
+// 	data   string
+// }
 
 func TestGetMetric(t *testing.T) {
 	var (
@@ -189,10 +195,8 @@ func TestGetMetric(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			status, body, err := testSendRequest(srv, "GET", test.url, nil)
 			require.NoError(t, err)
-
 			assert.Equal(t, test.wantStatus, status)
 			assert.Equal(t, test.wantResponse, string(body))
-
 		})
 	}
 }
