@@ -12,13 +12,23 @@ type Storage interface {
 	UpdateCounters(name string, value int64)
 	UpdateGauges(name string, value float64)
 	String() string
-	GetMetric(mType, mName string) string
+	GetMetricString(mType, mName string) string
+	GetOneMetric(mName string) *metrics.Metrics
+	GetMetric(mName string, mType string) *metrics.Metrics
+	UpdateMetrics(newMetrics []*metrics.Metrics) []error
+	UpdateMetric(newMetric *metrics.Metrics)
+	AddMetric(newMetric *metrics.Metrics)
 }
 
 type MemStorage struct {
 	dataCounters map[string]int64
 	dataGauges   map[string]float64
-	mu   sync.RWMutex
+	metrics      []*metrics.Metrics
+	mu           sync.RWMutex
+}
+
+type MetricStorage struct {
+	metrics []*metrics.Metrics
 }
 
 func (ms *MemStorage) String() string {
@@ -50,19 +60,24 @@ func (ms *MemStorage) String() string {
 
 }
 
-func (ms *MemStorage) UpdateCounters(name string, value int64) {
+func (ms *MemStorage) UpdateMetric(newMetric *metrics.Metrics) {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
-	ms.dataCounters[name] += value
+	switch newMetric.MType {
+	case metrics.Gauge:
+		ms.dataGauges[newMetric.ID] = *newMetric.Value
+		return
+	case metrics.Counter:
+		ms.dataCounters[newMetric.ID] += *newMetric.Delta
+		return
+	}
 }
 
-func (ms *MemStorage) UpdateGauges(name string, value float64) {
-	ms.mu.RLock()
-	defer ms.mu.RUnlock()
-	ms.dataGauges[name] = value
+func (ms *MemStorage) AddMetric(newMetric *metrics.Metrics) {
+	ms.UpdateMetric(newMetric)
 }
 
-func (ms *MemStorage) GetMetric(mType, mName string) string {
+func (ms *MemStorage) GetMetricString(mType, mName string) string {
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 	switch mType {
@@ -80,6 +95,62 @@ func (ms *MemStorage) GetMetric(mType, mName string) string {
 		return strconv.FormatInt(val, 10)
 	}
 	return ""
+}
+
+func (ms *MemStorage) GetMetric(mName string, mType string) *metrics.Metrics {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+	switch mType {
+	case metrics.Gauge:
+		for key, value := range ms.dataGauges {
+			if key == mName {
+				return &metrics.Metrics{
+					ID:    key,
+					MType: metrics.Gauge,
+					Delta: nil,
+					Value: &value,
+				}
+			}
+		}
+	case metrics.Counter:
+		for key, value := range ms.dataCounters {
+			if key == mName {
+				return &metrics.Metrics{
+					ID:    key,
+					MType: metrics.Counter,
+					Delta: &value,
+					Value: nil,
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+func (ms *MemStorage) GetOneMetric(mName string) *metrics.Metrics {
+	for key, value := range ms.dataGauges {
+		if key == mName {
+			return &metrics.Metrics{
+				ID:    key,
+				MType: metrics.Gauge,
+				Delta: nil,
+				Value: &value,
+			}
+		}
+	}
+
+	for key, value := range ms.dataCounters {
+		if key == mName {
+			return &metrics.Metrics{
+				ID:    key,
+				MType: metrics.Counter,
+				Delta: &value,
+				Value: nil,
+			}
+		}
+	}
+	return nil
 }
 
 func NewMemStorage() *MemStorage {
