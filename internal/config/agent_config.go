@@ -12,24 +12,21 @@ const (
 	defaultReportInterval = 10 * time.Second
 )
 
-func SelectArgs(addr *string, pollInterval, reportInterval *int) {
+func AgentSelectArgs(addr *string, pollInterval, reportInterval *int) {
 	var (
 		flagAddr          string
 		flagPoll, flagRep int
 	)
-	flag.StringVar(&flagAddr, "a", "localhost:8080",
-		"address for metric server")
-	flag.IntVar(&flagPoll, "p", int(defaultPollInterval.Seconds()),
-		"frequency of gathering metrics")
-	flag.IntVar(&flagRep, "r", int(defaultReportInterval.Seconds()),
-		"frequency of sending metrics")
+	flag.StringVar(&flagAddr, "a", "localhost:8080", "address for metric server")
+	flag.IntVar(&flagPoll, "p", int(defaultPollInterval.Seconds()), "frequency of gathering metrics")
+	flag.IntVar(&flagRep, "r", int(defaultReportInterval.Seconds()), "frequency of sending metrics")
 	flag.Parse()
 
 	if *addr = os.Getenv("ADDRESS"); *addr == "" {
 		*addr = flagAddr
 	}
-
 	envPoll, err := strconv.Atoi(os.Getenv("POLL_INTERVAL"))
+
 	if err == nil {
 		*pollInterval = envPoll
 	} else {
@@ -37,6 +34,7 @@ func SelectArgs(addr *string, pollInterval, reportInterval *int) {
 	}
 
 	envRep, err := strconv.Atoi(os.Getenv("REPORT_INTERVAL"))
+
 	if err == nil {
 		*reportInterval = envRep
 	} else {
