@@ -246,6 +246,7 @@ func TestLogAndWriteError(t *testing.T) {
 	LogAndWriteError(w, http.StatusBadRequest, testError, testMessage)
 
 	resp := w.Result()
+	defer resp.Body.Close()
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	assert.Equal(t, "application/json", resp.Header.Get("Content-Type"))
 

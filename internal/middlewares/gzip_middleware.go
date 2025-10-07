@@ -69,7 +69,9 @@ func GzipMiddleware(next http.Handler) http.Handler {
 			defer func(gzReader *gzip.Reader) {
 				err := gzReader.Close()
 				if err != nil {
-
+					log.Error().
+						Err(err).
+						Msg("Failed to close gzip reader")
 				}
 			}(gzReader)
 			log.Debug().
