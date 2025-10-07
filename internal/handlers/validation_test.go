@@ -118,6 +118,25 @@ func TestValidateMetricValue(t *testing.T) {
 			wantError: true,
 			errorMsg:  "invalid counter value format",
 		},
+		{
+			name:      "valid gauge with scientific notation",
+			value:     "1.23e10",
+			mType:     "gauge",
+			wantError: false,
+		},
+		{
+			name:      "valid gauge with capital E",
+			value:     "2.5E-5",
+			mType:     "gauge",
+			wantError: false,
+		},
+		{
+			name:      "invalid gauge with letters but no decimal",
+			value:     "abc123",
+			mType:     "gauge",
+			wantError: true,
+			errorMsg:  "invalid gauge value format",
+		},
 	}
 
 	for _, tt := range tests {

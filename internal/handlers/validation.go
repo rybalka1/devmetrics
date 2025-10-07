@@ -28,7 +28,7 @@ func ValidateMetricName(name string) error {
 	}
 
 	if utf8.RuneCountInString(name) > MaxMetricNameLength {
-		return fmt.Errorf("metric name too long (max %d characters)", MaxMetricNameLength)
+		return fmt.Errorf("metric name too long")
 	}
 
 	if !validMetricNameRegex.MatchString(name) {
@@ -45,17 +45,17 @@ func ValidateMetricValue(value string, mType string) error {
 	}
 
 	if utf8.RuneCountInString(value) > MaxMetricValueLength {
-		return fmt.Errorf("metric value too long (max %d characters)", MaxMetricValueLength)
+		return fmt.Errorf("metric value too long")
 	}
 
 	switch mType {
 	case "gauge":
-		// Basic float validation - more strict validation would require strconv.ParseFloat first
-		if strings.ContainsAny(value, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ") && !strings.Contains(value, ".") {
+		// Basic float validation - allow scientific notation like "1.23e10"
+		if strings.ContainsAny(value, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ") && !strings.Contains(value, ".") && !strings.Contains(strings.ToLower(value), "e") {
 			return fmt.Errorf("invalid gauge value format")
 		}
 	case "counter":
-		// Basic integer validation
+		// Basic integer validation - no letters or decimal points allowed
 		if strings.ContainsAny(value, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.") {
 			return fmt.Errorf("invalid counter value format")
 		}
