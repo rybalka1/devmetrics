@@ -15,6 +15,7 @@ import (
 
 type Server interface {
 	Start() error
+	StartWithGracefulShutdown() error
 	Stop() error
 	AddMux(mux http.Handler)
 }
@@ -36,7 +37,10 @@ func NewMetricServerWithParams(addr string) (*MetricServer, error) {
 	srv := MetricServer{
 		addr: netAddr,
 		Server: http.Server{
-			Addr: netAddr.String(),
+			Addr:         netAddr.String(),
+			ReadTimeout:  10 * time.Second,
+			WriteTimeout: 10 * time.Second,
+			IdleTimeout:  60 * time.Second,
 		},
 	}
 	return &srv, nil

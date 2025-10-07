@@ -75,8 +75,9 @@ func (agent Agent) SendOneMetricJSON(name string, mymetric metrics.MyMetrics) er
 	client := &http.Client{
 		Timeout: time.Second * 30,
 		Transport: &http.Transport{
-			MaxIdleConns:        10,
-			IdleConnTimeout:     30 * time.Second,
+			MaxIdleConns:        100,
+			MaxConnsPerHost:     100,
+			IdleConnTimeout:     90 * time.Second,
 			DisableCompression:  false,
 		},
 	}

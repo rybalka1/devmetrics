@@ -62,7 +62,7 @@ func (service MetricService) Start() error {
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	go service.BackupLoop(wg)
-	err := service.server.Start()
+	err := service.server.StartWithGracefulShutdown()
 	wg.Wait()
 	return err
 }
