@@ -56,14 +56,18 @@ func (ms *MemStorage) String() string {
 }
 
 func (ms *MemStorage) UpdateMetric(newMetric *metrics.Metrics) {
-	ms.mu.RLock()
-	defer ms.mu.RUnlock()
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
 	switch newMetric.MType {
 	case metrics.Gauge:
-		ms.dataGauges[newMetric.ID] = *newMetric.Value
+		if newMetric.Value != nil {
+			ms.dataGauges[newMetric.ID] = *newMetric.Value
+		}
 		return
 	case metrics.Counter:
-		ms.dataCounters[newMetric.ID] += *newMetric.Delta
+		if newMetric.Delta != nil {
+			ms.dataCounters[newMetric.ID] += *newMetric.Delta
+		}
 		return
 	}
 }

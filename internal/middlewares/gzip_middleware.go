@@ -39,7 +39,6 @@ func (gRW gzipResponseWriter) Write(data []byte) (int, error) {
 		http.Error(gRW.ResponseWriter, err.Error(), http.StatusInternalServerError)
 		return 0, err
 	}
-	defer gzWriter.Close()
 	gRW.Header().Set("Content-Encoding", "gzip")
 	log.Debug().
 		Msg("response SHOULD be compressed")
@@ -67,7 +66,12 @@ func GzipMiddleware(next http.Handler) http.Handler {
 				return
 			}
 			r.Body = gzReader
-			defer gzReader.Close()
+			defer func(gzReader *gzip.Reader) {
+				err := gzReader.Close()
+				if err != nil {
+
+				}
+			}(gzReader)
 			log.Debug().
 				Msg("Client have compressed BODY")
 		}

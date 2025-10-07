@@ -7,14 +7,14 @@ import (
 )
 
 func (ms *MemStorage) UpdateCounters(name string, value int64) {
-	ms.mu.RLock()
-	defer ms.mu.RUnlock()
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
 	ms.dataCounters[name] += value
 }
 
 func (ms *MemStorage) UpdateGauges(name string, value float64) {
-	ms.mu.RLock()
-	defer ms.mu.RUnlock()
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
 	ms.dataGauges[name] = value
 }
 

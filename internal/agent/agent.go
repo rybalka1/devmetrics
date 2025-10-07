@@ -81,33 +81,57 @@ func NewAgent(addr string, pollInterval, reportInterval int) (*Agent, error) {
 }
 
 func (agent Agent) Start() error {
-
-	var (
-		maxErrCount int
-		curErrCount int
+	const (
+		maxErrCount     = 3
+		maxRetryBackoff = 30 * time.Second
 	)
 
-	maxErrCount = 3
-	curErrCount = 0
+	var curErrCount int
 	pollTicker := time.NewTicker(agent.pollInterval)
 	reportTicker := time.NewTicker(agent.reportInterval)
+
+	defer func() {
+		pollTicker.Stop()
+		reportTicker.Stop()
+	}()
+
+	log.Info().
+		Dur("poll_interval", agent.pollInterval).
+		Dur("report_interval", agent.reportInterval).
+		Msg("Starting agent")
 
 	for {
 		select {
 		case t1 := <-pollTicker.C:
-			fmt.Println("Receiving:", t1.Format(time.TimeOnly))
+			log.Debug().Time("poll_time", t1).Msg("Collecting metrics")
 			agent.GetMetrics()
 		case t2 := <-reportTicker.C:
-			fmt.Println("- Sending:", t2.Format(time.TimeOnly))
+			log.Debug().Time("report_time", t2).Msg("Sending metrics batch")
+
 			err := agent.SendMetricsJSON()
-
 			if err != nil {
-				log.Debug().
-					Msgf("%v error, while send metrics", err)
-				curErrCount += 1
+				curErrCount++
+				log.Error().
+					Err(err).
+					Int("error_count", curErrCount).
+					Int("max_errors", maxErrCount).
+					Msg("Failed to send metrics")
 
-				if curErrCount > maxErrCount {
-					return err
+				// Implement exponential backoff for retry interval
+				if curErrCount >= maxErrCount {
+					log.Error().
+						Int("error_count", curErrCount).
+						Msg("Maximum error count reached, stopping agent")
+					return fmt.Errorf("agent stopped due to repeated errors: %w", err)
+				}
+
+				// Reset error count on successful send
+				log.Info().Msg("Will retry sending metrics on next interval")
+			} else {
+				// Reset error count on success
+				if curErrCount > 0 {
+					log.Info().Int("previous_errors", curErrCount).Msg("Metrics sent successfully, error count reset")
+					curErrCount = 0
 				}
 			}
 		}

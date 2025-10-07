@@ -3,80 +3,88 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
-	"strings"
 
-	"github.com/rs/zerolog/log"
 	"github.com/rybalka1/devmetrics/internal/metrics"
 	"github.com/rybalka1/devmetrics/internal/storage/memstorage"
 )
 
 func JSONUpdateOneMetricHandler(store memstorage.Storage) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Validate HTTP method
 		if r.Method != http.MethodPost {
-			log.Error().Err(fmt.Errorf("wrong method for %s", r.URL.RawPath)).Send()
-			w.WriteHeader(http.StatusInternalServerError)
+			LogAndWriteError(w, http.StatusMethodNotAllowed, fmt.Errorf("wrong method: %s", r.Method), "Method not allowed")
 			return
 		}
-		valid := false
-		vals := r.Header.Values("content-type")
-		for _, val := range vals {
-			if strings.Contains(val, "application/json") {
-				valid = true
-				break
-			}
-		}
-		if !valid {
-			log.Error().
-				Err(fmt.Errorf("invalid \"content-type\": %s", strings.Join(vals, ";"))).Send()
-			w.WriteHeader(http.StatusInternalServerError)
+
+		// Validate content type
+		if err := ValidateContentType(r); err != nil {
+			LogAndWriteError(w, http.StatusBadRequest, err, "Invalid content type")
 			return
 		}
-		var metric = new(metrics.Metrics)
-		body, err := io.ReadAll(r.Body)
+
+		// Read and validate request body
+		body, err := ValidateRequestBody(r)
 		if err != nil {
-			log.Error().Err(err).Send()
-			w.WriteHeader(http.StatusInternalServerError)
+			LogAndWriteError(w, http.StatusBadRequest, err, "Invalid request body")
 			return
 		}
 		defer r.Body.Close()
-		err = json.Unmarshal(body, &metric)
-		if err != nil {
-			log.Error().Err(err).Send()
-			w.WriteHeader(http.StatusInternalServerError)
+
+		// Parse JSON
+		var metric = new(metrics.Metrics)
+		if err := json.Unmarshal(body, &metric); err != nil {
+			LogAndWriteError(w, http.StatusBadRequest, err, "Invalid JSON format")
 			return
 		}
-		log.Info().RawJSON("metric", body).Msg("Request")
+
+		// Validate metric structure
 		if metric == nil {
-			log.Error().Err(fmt.Errorf("metric is nil")).Send()
-			w.WriteHeader(http.StatusInternalServerError)
+			LogAndWriteError(w, http.StatusBadRequest, fmt.Errorf("metric is nil"), "Metric is nil")
 			return
 		}
-		if (metric.Delta == nil && metric.Value == nil) || metric.ID == "" {
-			log.Error().Err(fmt.Errorf("metric doesn't contain any value")).Send()
-			w.WriteHeader(http.StatusInternalServerError)
+
+		// Validate metric name
+		if metric.ID == "" {
+			LogAndWriteError(w, http.StatusBadRequest, fmt.Errorf("metric ID is empty"), "Metric ID is required")
 			return
 		}
+
+		if _, err := SanitizeAndValidateMetricName(metric.ID); err != nil {
+			LogAndWriteError(w, http.StatusBadRequest, err, "Invalid metric name")
+			return
+		}
+
+		// Validate metric type and value
+		if metric.MType != "gauge" && metric.MType != "counter" {
+			LogAndWriteError(w, http.StatusBadRequest, fmt.Errorf("invalid metric type: %s", metric.MType), "Invalid metric type")
+			return
+		}
+
+		if metric.Delta == nil && metric.Value == nil {
+			LogAndWriteError(w, http.StatusBadRequest, fmt.Errorf("metric must have either delta or value"), "Metric must have a value")
+			return
+		}
+
+		// Update metric in storage
 		store.UpdateMetric(metric)
 		retMetric := store.GetMetric(metric.ID, metric.MType)
 		if retMetric == nil {
-			log.Error().Err(fmt.Errorf("metric \"%s\" not found in store", metric.ID)).Send()
-			w.WriteHeader(http.StatusNotFound)
+			LogAndWriteError(w, http.StatusNotFound, fmt.Errorf("metric %s not found after update", metric.ID), "Metric not found")
 			return
 		}
-		body, err = json.Marshal(retMetric)
+
+		// Return updated metric
+		responseBody, err := json.Marshal(retMetric)
 		if err != nil {
-			log.Error().Err(err).Send()
-			w.WriteHeader(http.StatusInternalServerError)
+			LogAndWriteError(w, http.StatusInternalServerError, err, "Failed to marshal response")
 			return
 		}
-		log.Info().RawJSON("metric", body).Msg("Response")
-		w.Header().Set("content-type", "application/json")
-		_, err = w.Write(body)
+
+		w.Header().Set("Content-Type", "application/json")
+		_, err = w.Write(responseBody)
 		if err != nil {
-			log.Error().Err(err).Send()
-			w.WriteHeader(http.StatusInternalServerError)
+			LogAndWriteError(w, http.StatusInternalServerError, err, "Failed to write response")
 			return
 		}
 		w.WriteHeader(http.StatusOK)
@@ -85,78 +93,74 @@ func JSONUpdateOneMetricHandler(store memstorage.Storage) func(w http.ResponseWr
 
 func JSONGetMetricHandler(store memstorage.Storage) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Validate HTTP method
 		if r.Method != http.MethodPost {
-			log.Error().Err(fmt.Errorf("wrong method for %s", r.URL.RawPath)).Send()
-			w.WriteHeader(http.StatusInternalServerError)
+			LogAndWriteError(w, http.StatusMethodNotAllowed, fmt.Errorf("wrong method: %s", r.Method), "Method not allowed")
 			return
 		}
-		valid := false
-		vals := r.Header.Values("content-type")
-		for _, val := range vals {
-			if strings.Contains(val, "application/json") {
-				valid = true
-				break
-			}
-		}
-		if !valid {
-			log.Error().Err(fmt.Errorf("invalid \"content-type\": %s", strings.Join(vals, ";"))).Send()
-			w.WriteHeader(http.StatusInternalServerError)
+
+		// Validate content type
+		if err := ValidateContentType(r); err != nil {
+			LogAndWriteError(w, http.StatusBadRequest, err, "Invalid content type")
 			return
 		}
-		var metric = new(metrics.Metrics)
-		body, err := io.ReadAll(r.Body)
+
+		// Read and validate request body
+		body, err := ValidateRequestBody(r)
 		if err != nil {
-			log.Error().Err(err).Send()
-			w.WriteHeader(http.StatusInternalServerError)
+			LogAndWriteError(w, http.StatusBadRequest, err, "Invalid request body")
 			return
 		}
 		defer r.Body.Close()
-		err = json.Unmarshal(body, &metric)
-		if err != nil {
-			log.Error().Err(err).Send()
-			w.WriteHeader(http.StatusInternalServerError)
+
+		// Parse JSON
+		var metric = new(metrics.Metrics)
+		if err := json.Unmarshal(body, &metric); err != nil {
+			LogAndWriteError(w, http.StatusBadRequest, err, "Invalid JSON format")
 			return
 		}
-		log.Info().
-			RawJSON("metric", body).Str("method", r.Method).Str("url", r.URL.RawPath).Msg("Request")
+
+		// Validate metric structure
 		if metric == nil {
-			log.Error().Err(fmt.Errorf("metric is nil")).Send()
-			w.WriteHeader(http.StatusInternalServerError)
+			LogAndWriteError(w, http.StatusBadRequest, fmt.Errorf("metric is nil"), "Metric is nil")
 			return
 		}
 
+		// Validate metric name
 		if metric.ID == "" {
-			log.Error().Err(fmt.Errorf("metric doesn't contain ID")).Send()
-			w.WriteHeader(http.StatusInternalServerError)
+			LogAndWriteError(w, http.StatusBadRequest, fmt.Errorf("metric ID is empty"), "Metric ID is required")
 			return
 		}
 
-		if metric.ID == "" {
-			log.Error().Err(fmt.Errorf("metric doesn't contain ID")).Send()
-			w.WriteHeader(http.StatusInternalServerError)
+		if _, err := SanitizeAndValidateMetricName(metric.ID); err != nil {
+			LogAndWriteError(w, http.StatusBadRequest, err, "Invalid metric name")
 			return
 		}
 
+		// Validate metric type if provided
+		if metric.MType != "" && metric.MType != "gauge" && metric.MType != "counter" {
+			LogAndWriteError(w, http.StatusBadRequest, fmt.Errorf("invalid metric type: %s", metric.MType), "Invalid metric type")
+			return
+		}
+
+		// Get metric from storage
 		retMetric := store.GetMetric(metric.ID, metric.MType)
 		if retMetric == nil {
-			log.Error().Err(fmt.Errorf("metric \"%s\" not found in store", metric.ID)).Send()
-			w.WriteHeader(http.StatusNotFound)
+			LogAndWriteError(w, http.StatusNotFound, fmt.Errorf("metric %s not found", metric.ID), "Metric not found")
 			return
 		}
 
-		body, err = json.Marshal(retMetric)
+		// Return metric
+		responseBody, err := json.Marshal(retMetric)
 		if err != nil {
-			log.Error().Err(err).Send()
-			w.WriteHeader(http.StatusInternalServerError)
+			LogAndWriteError(w, http.StatusInternalServerError, err, "Failed to marshal response")
 			return
 		}
 
-		log.Info().RawJSON("metric", body).Msg("Response")
-		w.Header().Set("content-type", "application/json")
-		_, err = w.Write(body)
+		w.Header().Set("Content-Type", "application/json")
+		_, err = w.Write(responseBody)
 		if err != nil {
-			log.Error().Err(err).Send()
-			w.WriteHeader(http.StatusInternalServerError)
+			LogAndWriteError(w, http.StatusInternalServerError, err, "Failed to write response")
 			return
 		}
 		w.WriteHeader(http.StatusOK)

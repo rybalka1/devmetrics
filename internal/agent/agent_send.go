@@ -36,16 +36,20 @@ func (agent Agent) SendOneMetricJSON(name string, mymetric metrics.MyMetrics) er
 	URL := "update"
 	metric, err := metrics.ConvertMymetric2Metric(name, mymetric)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to convert metric %s: %w", name, err)
 	}
+
 	address := fmt.Sprintf("http://%s/%s/", agent.addr.String(), URL)
 	body, err := json.Marshal(metric)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal metric %s: %w", name, err)
 	}
-	log.Info().
+
+	log.Debug().
 		RawJSON("body", body).
-		Msg("Send: ")
+		Str("metric_name", name).
+		Msg("Sending metric")
+
 	var buffer = bytes.NewBuffer(body)
 	compressionStatus := false
 	if agent.compression {
@@ -53,28 +57,57 @@ func (agent Agent) SendOneMetricJSON(name string, mymetric metrics.MyMetrics) er
 		if err == nil {
 			buffer = bytes.NewBuffer(compressed)
 			compressionStatus = true
+		} else {
+			log.Warn().Err(err).Msg("Failed to compress request body")
 		}
 	}
 
 	request, err := http.NewRequest(http.MethodPost, address, buffer)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create HTTP request: %w", err)
 	}
-	request.Header.Set("content-type", "application/json")
+	request.Header.Set("Content-Type", "application/json")
 	if agent.compression && compressionStatus {
-		request.Header.Set("content-encoding", "gzip")
+		request.Header.Set("Content-Encoding", "gzip")
 	}
-	client := http.Client{Timeout: time.Second * 30}
+
+	// Use configurable timeout with reasonable defaults
+	client := &http.Client{
+		Timeout: time.Second * 30,
+		Transport: &http.Transport{
+			MaxIdleConns:        10,
+			IdleConnTimeout:     30 * time.Second,
+			DisableCompression:  false,
+		},
+	}
+
 	resp, err := client.Do(request)
 	if err != nil {
-		return err
+		return fmt.Errorf("HTTP request failed for metric %s: %w", name, err)
 	}
 	defer resp.Body.Close()
-	body, err = io.ReadAll(resp.Body)
-	if err != nil {
-		return err
+
+	// Check response status
+	if resp.StatusCode >= 400 {
+		body, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return fmt.Errorf("HTTP %d for metric %s (failed to read response body: %w)", resp.StatusCode, name, readErr)
+		}
+		return fmt.Errorf("HTTP %d for metric %s: %s", resp.StatusCode, name, string(body))
 	}
-	log.Info().Str("url", URL).RawJSON("body", body).Msg("Receive: ")
+
+	responseBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response body for metric %s: %w", name, err)
+	}
+
+	log.Debug().
+		Str("url", URL).
+		RawJSON("body", responseBody).
+		Str("metric_name", name).
+		Int("status_code", resp.StatusCode).
+		Msg("Received response")
+
 	return nil
 }
 
