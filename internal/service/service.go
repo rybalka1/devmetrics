@@ -32,9 +32,9 @@ func (service *MetricService) SetupLogger(level string) error {
 	return logger.Initialize(level)
 }
 
-func NewService(args config.Args) (Service, error) {
+func NewService(cfg config.ServerConfig) (Service, error) {
 	store := memstorage.NewMemStorage()
-	fstore, err := filestorage.NewFileStorage(args.StoragePath, store)
+	fstore, err := filestorage.NewFileStorage(cfg.StoragePath, store)
 	if err != nil {
 		return nil, err
 	}
@@ -42,10 +42,10 @@ func NewService(args config.Args) (Service, error) {
 		server:               nil,
 		Storage:              store,
 		FileStorageInterface: fstore,
-		StoreInterval:        time.Duration(args.StoreInterval) * time.Second,
-		Restore:              args.Restore,
+		StoreInterval:        time.Duration(cfg.StoreInterval) * time.Second,
+		Restore:              cfg.Restore,
 	}
-	server, err := http.NewServer(args)
+	server, err := http.NewServer(cfg)
 	if err != nil {
 		return nil, err
 	}

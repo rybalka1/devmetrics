@@ -7,6 +7,7 @@ import (
 
 	"github.com/rs/zerolog/log"
 
+	"github.com/rybalka1/devmetrics/internal/config"
 	"github.com/rybalka1/devmetrics/internal/logger"
 	"github.com/rybalka1/devmetrics/internal/metrics"
 	"github.com/rybalka1/devmetrics/internal/storage/memstorage"
@@ -57,8 +58,8 @@ func (agent Agent) InitLogger(loggerLevel string) error {
 	return logger.Initialize(loggerLevel)
 }
 
-func NewAgent(addr string, pollInterval, reportInterval int) (*Agent, error) {
-	netAddr, err := net.ResolveTCPAddr("tcp", addr)
+func NewAgent(cfg config.AgentConfig) (*Agent, error) {
+	netAddr, err := net.ResolveTCPAddr("tcp", cfg.Address)
 
 	if err != nil {
 		return nil, err
@@ -68,8 +69,8 @@ func NewAgent(addr string, pollInterval, reportInterval int) (*Agent, error) {
 		addr:           netAddr,
 		metricsPoint:   "update",
 		metrics:        make(map[string]metrics.MyMetrics),
-		pollInterval:   time.Duration(pollInterval) * time.Second,
-		reportInterval: time.Duration(reportInterval) * time.Second,
+		pollInterval:   time.Duration(cfg.PollInterval) * time.Second,
+		reportInterval: time.Duration(cfg.ReportInterval) * time.Second,
 		logLevel:       "debug",
 	}
 	err = agent.InitLogger(agent.logLevel)

@@ -7,11 +7,13 @@ import (
 )
 
 func main() {
-	var args config.Args
-
-	config.ServerArgsParse(&args)
-	log.Info().Str("addr", args.Addr).Str("log", args.LogLevel).Send()
-	Service, err := service.NewService(args)
+	cfg, err := config.LoadUnifiedConfig()
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to load configuration")
+	}
+	serverConfig := cfg.GetServerConfig()
+	log.Info().Str("addr", serverConfig.Address).Str("log", serverConfig.LogLevel).Send()
+	Service, err := service.NewService(serverConfig)
 
 	if err != nil {
 		log.Fatal().Err(err).Send()

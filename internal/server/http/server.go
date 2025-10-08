@@ -25,8 +25,8 @@ type MetricServer struct {
 	http.Server
 }
 
-func NewServer(args config.Args) (Server, error) {
-	return NewMetricServerWithParams(args.Addr)
+func NewServer(cfg config.ServerConfig) (Server, error) {
+	return NewMetricServerWithParams(cfg.Address)
 }
 
 func NewMetricServerWithParams(addr string) (*MetricServer, error) {

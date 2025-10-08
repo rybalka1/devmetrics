@@ -9,13 +9,12 @@ import (
 )
 
 func main() {
-	var (
-		addr                         string
-		pollInterval, reportInterval int
-	)
-
-	config.AgentSelectArgs(&addr, &pollInterval, &reportInterval)
-	mAgent, err := agent.NewAgent(addr, pollInterval, reportInterval)
+	cfg, err := config.LoadUnifiedConfig()
+	if err != nil {
+		log.Fatal(err)
+	}
+	agentConfig := cfg.GetAgentConfig()
+	mAgent, err := agent.NewAgent(agentConfig)
 
 	if err != nil {
 		fmt.Println(err)
