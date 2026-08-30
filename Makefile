@@ -1,5 +1,5 @@
 
-
+## Build all project
 all: clean-startup server agent tests clean-endup
 
 clean-startup:
@@ -8,12 +8,12 @@ clean-startup:
 server:
 	go build -buildvcs=false -o ./cmd/server/server ./cmd/server/main.go
 
+## Build agent
 agent:
 	go build -buildvcs=false -o ./cmd/agent/agent ./cmd/agent/main.go
 
-# Tests
-
-tests: check1 check2 check3 check4 check5
+## Tests
+tests: check1 check2 check3 check4 check5 check6 check7 check8 check9
 
 check1:
 	bash ./tests/check1.sh
@@ -30,14 +30,29 @@ check4:
 check5:
 	bash ./tests/check5.sh
 
+check6:
+	bash ./tests/check6.sh
+
+check7:
+	bash ./tests/check7.sh
+
+check8:
+	bash ./tests/check8.sh
+
+check9:
+	bash ./tests/check9.sh
+
+## Clean instans for end all tasks
 clean-endup:
 	rm -rf cmd/server/server cmd/agent/agent
 
-# Build componrnts use flag -race
+## Build components use flag -race
 all-race: build-race-server build-race-agent
 
+## Build server use flag -race
 build-race-server:
-	go1.21.8 build  -race -buildvcs=false -o ./cmd/server/server ./cmd/server/main.go
+	go build  -race -buildvcs=false -o ./cmd/server/server ./cmd/server/main.go
 
+## Build agent use flag -race
 build-race-agent:
-	go1.21.8 build  -race -buildvcs=false -o ./cmd/agent/agent ./cmd/agent/main.go
+	go build  -race -buildvcs=false -o ./cmd/agent/agent ./cmd/agent/main.go

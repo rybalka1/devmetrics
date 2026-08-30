@@ -2,6 +2,10 @@
 
 set -e
 
+TEMP_FILE=/tmp/tmpfile
+
+echo > $TEMP_FILE
+
 find_unused_port() {
     local port
     while true; do
@@ -13,13 +17,14 @@ find_unused_port() {
     done
 }
 
-echo "Starting test iteration 5"
+echo "Starting test iteration 9"
 
 SERVER_PORT=$(find_unused_port)
           ADDRESS="localhost:${SERVER_PORT}"
-        #   TEMP_FILE=$(/tmp/tmpfile)
-          metricstest -test.v -test.run=^TestIteration5$ \
+          metricstest -test.v -test.run=^TestIteration9$ \
             -agent-binary-path=cmd/agent/agent \
             -binary-path=cmd/server/server \
+            -file-storage-path="$TEMP_FILE" \
             -server-port="$SERVER_PORT" \
             -source-path=.
+

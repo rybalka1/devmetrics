@@ -1,34 +1,22 @@
 package main
 
 import (
-	"flag"
-	"fmt"
-	"log"
-	"os"
-
-	"github.com/rybalka1/devmetrics/internal/server"
+	"github.com/rs/zerolog/log"
+	"github.com/rybalka1/devmetrics/internal/config"
+	"github.com/rybalka1/devmetrics/internal/service"
 )
 
-func selectArgs(addr *string) {
-	*addr = os.Getenv("ADDRESS")
-	var flagAddr string
-	flag.StringVar(&flagAddr, "a", "localhost:8080", "address for server")
-	flag.Parse()
-	if *addr == "" {
-		*addr = flagAddr
-	}
-
-}
-
 func main() {
-	var (
-		addr string
-	)
-	selectArgs(&addr)
-	fmt.Println(addr)
-	srv, err := server.NewMetricServer(addr)
+	cfg, err := config.LoadUnifiedConfig()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err).Msg("Failed to load configuration")
 	}
-	log.Fatal(srv.Start())
+	serverConfig := cfg.GetServerConfig()
+	log.Info().Str("addr", serverConfig.Address).Str("log", serverConfig.LogLevel).Send()
+	Service, err := service.NewService(serverConfig)
+
+	if err != nil {
+		log.Fatal().Err(err).Send()
+	}
+	log.Fatal().Err(Service.Start()).Send()
 }

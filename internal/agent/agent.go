@@ -2,16 +2,15 @@ package agent
 
 import (
 	"fmt"
-	"log"
-	"math/rand"
 	"net"
-	"net/http"
-	"reflect"
-	"runtime"
-	"strconv"
 	"time"
 
+	"github.com/rs/zerolog/log"
+
+	"github.com/rybalka1/devmetrics/internal/config"
+	"github.com/rybalka1/devmetrics/internal/logger"
 	"github.com/rybalka1/devmetrics/internal/metrics"
+	"github.com/rybalka1/devmetrics/internal/storage/memstorage"
 )
 
 var usedMemStats = []string{
@@ -48,116 +47,94 @@ type Agent struct {
 	addr           net.Addr
 	metricsPoint   string
 	metrics        map[string]metrics.MyMetrics
+	store          memstorage.Storage
 	pollInterval   time.Duration
 	reportInterval time.Duration
+	compression    bool
+	logLevel       string
 }
 
-func NewAgent(addr string, pollInterval, reportInterval int) (*Agent, error) {
-	netAddr, err := net.ResolveTCPAddr("tcp", addr)
+func (agent Agent) InitLogger(loggerLevel string) error {
+	return logger.Initialize(loggerLevel)
+}
+
+func NewAgent(cfg config.AgentConfig) (*Agent, error) {
+	netAddr, err := net.ResolveTCPAddr("tcp", cfg.Address)
+
 	if err != nil {
 		return nil, err
 	}
+
 	agent := &Agent{
 		addr:           netAddr,
 		metricsPoint:   "update",
 		metrics:        make(map[string]metrics.MyMetrics),
-		pollInterval:   time.Duration(pollInterval) * time.Second,
-		reportInterval: time.Duration(reportInterval) * time.Second,
+		pollInterval:   time.Duration(cfg.PollInterval) * time.Second,
+		reportInterval: time.Duration(cfg.ReportInterval) * time.Second,
+		logLevel:       "debug",
+	}
+	err = agent.InitLogger(agent.logLevel)
+
+	if err != nil {
+		return nil, err
 	}
 	return agent, nil
 }
 
-func (agent Agent) SendMetrics() {
-	if agent.metrics == nil {
-		return
-	}
-	for mName, metric := range agent.metrics {
-		url := fmt.Sprintf("http://%s/%s/%s/%s/%s", agent.addr.String(),
-			agent.metricsPoint, metric.SendType, mName, metric.Value)
-		fmt.Println(url)
-		resp, err := http.Post(url, "text/plain", nil)
-		if err != nil {
-			return
-		}
-		err = resp.Body.Close()
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-	}
-	agent.metrics["PollCount"] = metrics.MyMetrics{
-		Value:    "0",
-		SendType: metrics.Counter,
-	}
-}
+func (agent Agent) Start() error {
+	const (
+		maxErrCount     = 3
+		maxRetryBackoff = 30 * time.Second
+	)
 
-func (agent Agent) GetMetrics() {
-	if agent.metrics == nil {
-		agent.metrics = make(map[string]metrics.MyMetrics)
-	}
-	m := runtime.MemStats{}
-	runtime.ReadMemStats(&m)
-	values := reflect.ValueOf(m)
-	for _, name := range usedMemStats {
-		if values.FieldByName(name).IsValid() {
-			if values.FieldByName(name).CanInt() {
-				agent.metrics[name] = metrics.MyMetrics{
-					Value:    strconv.FormatInt(values.FieldByName(name).Int(), 10),
-					SendType: metrics.Counter,
-				}
-			}
-			if values.FieldByName(name).CanUint() {
-				agent.metrics[name] = metrics.MyMetrics{
-					Value:    strconv.FormatUint(values.FieldByName(name).Uint(), 10),
-					SendType: metrics.Counter,
-				}
-			}
-			if values.FieldByName(name).CanFloat() {
-				agent.metrics[name] = metrics.MyMetrics{
-					Value:    strconv.FormatFloat(values.FieldByName(name).Float(), 'f', -1, 64),
-					SendType: metrics.Gauge,
-				}
-			}
-		}
-	}
-
-	metric, ok := agent.metrics["PollCount"]
-	if !ok {
-		agent.metrics["PollCount"] = metrics.MyMetrics{
-			Value:    "1",
-			SendType: metrics.Counter,
-		}
-	} else {
-		metric.AddVal(1)
-		agent.metrics["PollCount"] = metric
-	}
-	r := rand.New(rand.NewSource(time.Now().Unix()))
-	randVal := float64(r.Intn(1000)) + r.Float64()
-	agent.metrics["RandomValue"] = metrics.MyMetrics{
-		Value:    strconv.FormatFloat(randVal, 'f', -1, 64),
-		SendType: metrics.Gauge,
-	}
-}
-
-func (agent Agent) Start() {
-	fmt.Println("Receiving:", time.Now().Format(time.TimeOnly))
-	agent.GetMetrics()
-	fmt.Println("- Sending:", time.Now().Format(time.TimeOnly))
-	agent.SendMetrics()
+	var curErrCount int
 	pollTicker := time.NewTicker(agent.pollInterval)
 	reportTicker := time.NewTicker(agent.reportInterval)
+
 	defer func() {
 		pollTicker.Stop()
 		reportTicker.Stop()
 	}()
+
+	log.Info().
+		Dur("poll_interval", agent.pollInterval).
+		Dur("report_interval", agent.reportInterval).
+		Msg("Starting agent")
+
 	for {
 		select {
 		case t1 := <-pollTicker.C:
-			fmt.Println("Receiving:", t1.Format(time.TimeOnly))
+			log.Debug().Time("poll_time", t1).Msg("Collecting metrics")
 			agent.GetMetrics()
 		case t2 := <-reportTicker.C:
-			fmt.Println("- Sending:", t2.Format(time.TimeOnly))
-			agent.SendMetrics()
+			log.Debug().Time("report_time", t2).Msg("Sending metrics batch")
+
+			err := agent.SendMetricsJSON()
+			if err != nil {
+				curErrCount++
+				log.Error().
+					Err(err).
+					Int("error_count", curErrCount).
+					Int("max_errors", maxErrCount).
+					Msg("Failed to send metrics")
+
+				// Implement exponential backoff for retry interval
+				if curErrCount >= maxErrCount {
+					log.Error().
+						Int("error_count", curErrCount).
+						Msg("Maximum error count reached, stopping agent")
+					return fmt.Errorf("agent stopped due to repeated errors: %w", err)
+				}
+
+				// Reset error count on successful send
+				log.Info().Msg("Will retry sending metrics on next interval")
+			} else {
+				// Reset error count on success
+				if curErrCount > 0 {
+					log.Info().Int("previous_errors", curErrCount).Msg("Metrics sent successfully, error count reset")
+					curErrCount = 0
+				}
+			}
 		}
 	}
 }

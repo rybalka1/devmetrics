@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/rybalka1/devmetrics/internal/agent"
@@ -8,14 +9,16 @@ import (
 )
 
 func main() {
-	var (
-		addr                         string
-		pollInterval, reportInterval int
-	)
-	config.SelectArgs(&addr, &pollInterval, &reportInterval)
-	mAgent, err := agent.NewAgent(addr, pollInterval, reportInterval)
+	cfg, err := config.LoadUnifiedConfig()
 	if err != nil {
 		log.Fatal(err)
 	}
-	mAgent.Start()
+	agentConfig := cfg.GetAgentConfig()
+	mAgent, err := agent.NewAgent(agentConfig)
+
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	log.Fatal(mAgent.Start())
 }
